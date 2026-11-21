@@ -21,6 +21,7 @@ from src.prompts import (
     SECUTIRY_ALERT_PROMPT,
 )
 from src.react_graph import sql_agent
+from src.reservation_recorder import save_approved_reservation
 from src.retrieval_graph import retrieval_graph
 from src.schema import (
     IntentSchema,
@@ -167,6 +168,8 @@ def check_intent(state: MainState):
         "slot_available": False,
         "assigned_slot": None,
         "admin_decision": None,
+        "reservation_recorded": False,
+        "reservation_record_error": None,
     }
 
 
@@ -229,6 +232,39 @@ def route_after_sql(state: MainState):
     return "generate_response"
 
 
+def route_after_admin(state: MainState):
+    if state.admin_decision and state.admin_decision.status == "approved":
+        return "record_reservation"
+    return "generate_response"
+
+
+def record_reservation(state: MainState):
+    if not (state.admin_decision and state.admin_decision.status == "approved"):
+        return {
+            "reservation_recorded": False,
+            "reservation_record_error": "Reservation was not approved by an administrator.",
+        }
+
+    start = state.user_info.reservation_period.start_date or ""
+    end = state.user_info.reservation_period.end_date or ""
+    period = f"{start} - {end}"
+    location_parts = [p for p in (state.user_info.place, f"slot {state.assigned_slot}" if state.assigned_slot else None) if p]
+    if location_parts:
+        period = f"{period} ({', '.join(location_parts)})"
+
+    approval_dt = state.admin_decision.approval_time or state.user_info.approval_time
+    result = save_approved_reservation.invoke({
+        "name": state.user_info.name or "",
+        "car_number": state.user_info.car_number or "",
+        "reservation_period": period,
+        "approval_time": approval_dt.isoformat() if approval_dt else None,
+    })
+    return {
+        "reservation_recorded": bool(result.get("ok")),
+        "reservation_record_error": result.get("error"),
+    }
+
+
 def generate_response(state: MainState):
     if not (state.wants_static_info or state.wants_dynamic_info or state.wants_reservation):
         return {
@@ -258,6 +294,8 @@ def generate_response(state: MainState):
         "admin_decision": (
             state.admin_decision.model_dump(mode="json") if state.admin_decision else "None"
         ),
+        "reservation_recorded": state.reservation_recorded,
+        "reservation_record_error": state.reservation_record_error or "None",
     })
     return {"messages": [AIMessage(content=answer)]}
 
@@ -271,6 +309,7 @@ workflow.add_node("update_state", update_state)
 workflow.add_node("retrieval", retrieval_graph)
 workflow.add_node("sql_agent", sql_agent)
 workflow.add_node("admin_agent", admin_agent)
+workflow.add_node("record_reservation", record_reservation)
 workflow.add_node("generate_response", generate_response)
 
 workflow.add_conditional_edges(START, route_entry, [
@@ -290,7 +329,10 @@ workflow.add_conditional_edges("retrieval", route_after_retrieval, [
 workflow.add_conditional_edges("sql_agent", route_after_sql, [
     "admin_agent", "generate_response",
 ])
-workflow.add_edge("admin_agent", "generate_response")
+workflow.add_conditional_edges("admin_agent", route_after_admin, [
+    "record_reservation", "generate_response",
+])
+workflow.add_edge("record_reservation", "generate_response")
 workflow.add_edge("generate_response", END)
 
 graph = workflow.compile()

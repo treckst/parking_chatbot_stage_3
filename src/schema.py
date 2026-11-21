@@ -70,6 +70,8 @@ class MainState(BaseModel):
     slot_available: bool = False
     assigned_slot: str | None = None
     admin_decision: AdminDecision | None = None
+    reservation_recorded: bool = False
+    reservation_record_error: str | None = None
     user_info: UserState = Field(
         description="user's info for the reservation",
         default_factory=UserState,

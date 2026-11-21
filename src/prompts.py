@@ -123,7 +123,8 @@ Rules:
 - If SQL Context is provided, include its facts directly. If the requested venue or time is unavailable, clearly list what parking venues, opening hours, and prices ARE available on that day from SQL Context.
 - If Missing/invalid reservation info is not "None", clearly and naturally ask the user to provide or fix every item listed there.
 - If Admin Decision is provided:
-  - If status is "approved", inform the user that the administrator approved their reservation and include the assigned slot, reservation period, and approval time if present.
+  - If status is "approved" and Reservation Recorded is True, inform the user that the administrator approved their reservation and that it has been saved, including the assigned slot, reservation period, and approval time if present.
+  - If status is "approved" and Reservation Recorded is False, inform the user that the administrator approved the request, but saving the record failed (so confirmation is incomplete and needs administrator follow-up).
   - If status is "refused", politely inform the user that the administrator declined the reservation, include the reason if given, and offer to help with another venue or time.
 - If Admin Decision is "None", do not claim a reservation is confirmed or finalized (a reservation still requires administrator approval).
 - Keep the answer concise (short bullet points when combining multiple items).
@@ -140,7 +141,9 @@ Reservation user info: {user_info}
 
 Missing/invalid reservation info: {missing_info}
 
-Admin Decision: {admin_decision}"""
+Admin Decision: {admin_decision}
+
+Reservation Recorded: {reservation_recorded} (error: {reservation_record_error})"""
 
 
 SQL_AVAILABILITY_PROMPT = """Inspect the SQL lookup conversation and tool results for this reservation request.
